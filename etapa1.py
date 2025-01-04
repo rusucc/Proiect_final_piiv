@@ -8,7 +8,8 @@ import tkinter as tk
 import threading
 from queue import Queue
 
-def splitCSVs():
+#functie care deschide 4 fisiere in care urmeaza sa scrie date, din fisierul cu date senzori
+def splitCSVs(): 
     with open('date_senzori.csv', 'r', newline='') as file:
         with open('_Temperaturi.csv', 'w', newline='') as temp_file:
             with open('_Umiditate.csv', 'w', newline='') as umid_file:
@@ -20,7 +21,7 @@ def splitCSVs():
                         wr_v = csv.writer(vit_file,delimiter=',',quotechar=' ', quoting=csv.QUOTE_MINIMAL)
                         wr_p = csv.writer(prez_file,delimiter=',',quotechar=' ', quoting=csv.QUOTE_MINIMAL)
                         rd = csv.reader(file, delimiter=',', quotechar='|')
-                        index = 0
+                        index = 0 #index pentru numarul citirii
                         for row in rd:
                             currentTime = datetime.now().strftime("%H:%M:%S")
                             wr_t.writerow([currentTime,index,row[0]])
@@ -29,7 +30,7 @@ def splitCSVs():
                             wr_p.writerow([currentTime,index,row[3]])
                             index = index + 1
 
-def graph(name):
+def graph(name): #functie care afiseaza un grafic cu datele dintr-un fisier si ii salveaza imaginea
     with open(name,'r', newline='') as file:
         rd = csv.reader(file, delimiter=',', quotechar='|')
         x = []

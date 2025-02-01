@@ -308,6 +308,8 @@ def create_gui():
     stop_server_button = tk.Button(frame, text="Opreste server si client", command=stop_server, bg='cyan')     
     stop_server_button.pack(pady=10)    #Așază butonul în cadrul main_frame și adaugă o margine de 10 unități 
 
+    btn_exit = tk.Button(frame, text="Închide aplicația", command=lambda: root.destroy())
+    btn_exit.pack(pady=10)
 
     frame.pack(fill='both', expand=True)
     root.mainloop()

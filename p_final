@@ -1,0 +1,316 @@
+#Rusu Cosmin, 533B
+
+import csv  # Gestionare fisiere CSV
+import datetime  # Gestionare date calendaristice
+import matplotlib.animation as animation  # Animatii in grafice
+import matplotlib.pyplot as plt  # Generare grafice
+import os  # Operatii cu sistemul de operare
+import queue  # Cozi pentru gestionarea datelor
+import random  # Generare numere aleatorii
+import serial  # Comunicatie seriala
+import socket  # Comunicatie TCP/IP
+import threading  # Lucru cu thread-uri
+import time  # Gestionare timp
+import tkinter as tk  # Interfata grafica
+from PIL import ImageTk, Image  # Manipulare imagini
+from tkinter import ttk, filedialog, Canvas, PhotoImage  # Elemente pentru interfata grafica
+
+# Lista globala pentru date receptionate
+received_data = []
+# Coada pentru stocarea datelor
+data_queue = queue.Queue(maxsize=20)
+# Liste pentru datele de pe axele graficului
+data_x, data_y1 = [], []
+
+# Conectare la dispozitivul serial
+def connect_serial():
+    global arduino
+    arduino = serial.Serial(port='COM8', baudrate=9600, timeout=.1)
+    collect_first_100()
+
+# Oprire conexiune seriala
+def stop_serial():
+    global arduino
+    arduino.close()
+
+# Colecteaza primele 100 de date si le salveaza in CSV
+def collect_first_100():
+    i = 0
+    with open('arduino_data.csv', 'w', newline='') as file:
+        while i < 100:
+            data = read_data()
+            if data is not None:
+                print(data)
+                i += 1
+                with open('arduino_data.csv', 'a', newline='') as append_file:
+                    writer = csv.writer(append_file, delimiter=',', quotechar=' ', quoting=csv.QUOTE_MINIMAL)
+                    writer.writerow([data])
+
+# Citire date de la dispozitivul serial
+def read_data():
+    global arduino
+    time.sleep(0.1)
+    raw_data = arduino.readline().decode('latin-1').strip()
+    print(raw_data)
+    if raw_data:
+        return float(raw_data)
+
+# Salveaza ultimele 10 date intr-un fisier CSV
+def save_last_10():
+    last_10_data = list(zip(data_x[-10:], data_y1[-10:]))
+    with open('last_10.csv', 'w', newline='') as file:
+        writer = csv.writer(file)
+        writer.writerow(["Index", "Value"])
+        writer.writerows(last_10_data)
+
+# Actualizare grafic in timp real
+def update_graph(frame):
+    global data_x, data_y1
+    data = read_data()
+    if data:
+        data_x.append(len(data_x))
+        data_y1.append(data)
+        save_last_10()
+        ax1.clear()
+        ax1.plot(data_x[-10:], data_y1[-10:], label='Valoare 1')
+        ax1.set_title('Ultimele 10 valori')
+        ax1.legend()
+        ax1.grid()
+
+
+
+# Afisare grafic dinamic
+def dynamic_graph():
+    global ax1
+    fig, ax1 = plt.subplots(figsize=(4, 4))
+    ani = animation.FuncAnimation(fig, update_graph, interval=100, cache_frame_data=False)
+    plt.show()
+
+# Pornire server TCP
+def start_tcp_server(host='127.0.0.1', port=65432):
+    server_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    server_socket.bind((host, port))
+    server_socket.listen(1)
+    print(f"Serverul este gata la {host}:{port}")
+    client_socket, client_address = server_socket.accept()
+    print(f"Conexiune stabilita cu {client_address}")
+    try:
+        while True:
+            data = client_socket.recv(1024)
+            if not data:
+                break
+            print(f"Date receptionate: {data.decode('utf-8').strip()}")
+    except Exception as e:
+        print(f"Eroare: {e}")
+    finally:
+        server_socket.close()
+        print("Conexiunea serverului a fost inchisa.")
+
+# Pornire client TCP
+
+def start_server(host='127.0.0.1', port=65432):         #se instantiaza funcţia start_server
+    global stopEvent
+    server_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)           # Creează un socket TCP
+    server_socket.bind((host, port))                    # Asociază socket-ul cu adresa și portul specificate
+
+    server_socket.listen(1)             # Pune serverul în modul de ascultare, acceptând o conexiune
+    print(f"Serverul este gata și așteaptă conexiunea clientului la {host}:{port}")     #afiseaza textul dintre ghilimele
+    print("***********************************************************************")    #afiseaza textul dintre ghilimele
+
+    client_socket, client_address = server_socket.accept()          # Acceptă o conexiune de la un client
+    print(f"Conexiune cu clientul {client_address} a fost stabilită.")      #afiseaza textul dintre ghilimele
+
+    try:            #manipularea erorilor
+        while True:         #crearea unei bucle
+            data = client_socket.recv(1024)   #se stocheaza datele de la client
+            if not data or stopEvent.is_set():        #conditie pentru oprirea buclei
+                break           #se opreste bucla cand e indeplinita conditia
+            decoded_data = data.decode('utf-8').strip()         #se decodeaza si evidentiaza datele de la arduino
+            print(f"Am primit datele: {decoded_data}")      #afiseaza textul dintre ghilimele
+            
+    except Exception as e:   #manipularea erorilor
+            print (f"Eroare: {e}")      #afiseaza textul dintre ghilimele
+    finally:   #manipularea erorilor
+        server_socket.close()       #se inchide serverul
+        print("Conexiunea a fost închisă.")     #afiseaza textul dintre ghilimele
+
+# Funcția pentru client
+def start_client():         #se instantiaza funcţia start_client
+    global received_data            #se apelează variabila globala received_data in acest namespace
+
+   
+    host = '127.0.0.1'          #se declara hostul serverului
+    port = 65432                #se declara portul pentru conectarea la server
+
+    client_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)       # Creează un socket TCP pentru client
+
+    try:             #manipularea erorilor
+        client_socket.connect((host, port))     #se conecteaza clientul la server prin host si port
+        print(f"Clientul s-a conectat la serverul cu ip {host}:{port}")         #afiseaza textul dintre ghilimele
+        print("********")           #afiseaza textul dintre ghilimele
+        with open('_Prezenta.csv', mode='r') as file:   # Citim datele din fisierul CSV
+            csv_reader = csv.reader(file)           #se instantiaza un obiect al clase csv pentru a putea citi date
+            for row in csv_reader:              #se creaza o bucla
+                if stopEvent.is_set():
+                    break
+                # Trimitem fiecare linie ca un mesaj
+                message = ','.join(row)  # Convertim lista de valori într-un string
+                client_socket.sendall(message.encode('utf-8'))          #se trimite datele codate de la client la server
+                time.sleep(0.05)  # Pauză între trimiteri
+       
+        data_queue.put(received_data)       #punem data in coada
+        with open('_Temperaturi.csv', mode='r') as file:   # Citim datele din fisierul CSV
+            csv_reader = csv.reader(file)           #se instantiaza un obiect al clase csv pentru a putea citi date
+            for row in csv_reader:          #se creaza o bucla
+                if stopEvent.is_set():
+                    break
+                # Trimitem fiecare linie ca un mesaj
+                message = ','.join(row)  # Convertim lista de valori într-un string
+                client_socket.sendall(message.encode('utf-8'))          #se trimite datele codate de la client la server
+                time.sleep(0.05)  # Pauză între trimiteri   
+        
+        data_queue.put(received_data)       #punem data in coada
+        with open('_Umiditate.csv', mode='r') as file:   # Citim datele din fisierul CSV
+            csv_reader = csv.reader(file)               #se instantiaza un obiect al clase csv pentru a putea citi date
+            for row in csv_reader:          #se creaza o bucla
+                # Trimitem fiecare linie ca un mesaj
+                if stopEvent.is_set():
+                    break
+                message = ','.join(row)  # Convertim lista de valori într-un string
+                client_socket.sendall(message.encode('utf-8'))          #se trimite datele codate de la client la server
+                time.sleep(0.05)  # Pauză între trimiteri
+       
+        data_queue.put(received_data)       #punem data in coada
+        with open('_Viteza.csv', mode='r') as file:   # Citim datele din fisierul CSV
+            csv_reader = csv.reader(file)           #se instantiaza un obiect al clase csv pentru a putea citi date
+            for row in csv_reader:          #se creaza o bucla
+                # Trimitem fiecare linie ca un mesaj
+                if stopEvent.is_set():
+                    break
+                message = ','.join(row)  # Convertim lista de valori într-un string
+                client_socket.sendall(message.encode('utf-8'))          #se trimite datele codate de la client la server
+                time.sleep(0.05)  # Pauză între trimiteri
+        data_queue.put(received_data)       #se trimit datele in coada
+        
+
+        print("Am primit Datele, începem deconectarea...")          #afiseaza textul dintre ghilimele
+    except Exception as e:           #manipularea erorilor
+        print(f"Eroare: {e}")       #afiseaza textul dintre ghilimele
+    finally:             #manipularea erorilor
+        client_socket.close()           #se inchide clientul
+        print("Conexiunea a fost închisă.")         #afiseaza textul dintre ghilimele
+
+def run_server_and_client():            #se instantiaza funcţia run_server_and_client
+    global server_thread                #se adauga variabila globala arduino in acest namespace
+    global client_thread
+    global stopEvent
+    stopEvent = threading.Event()
+    # Creează un fir de execuție pentru server, rulează funcția start_server în modul daemon
+    server_thread = threading.Thread(target=start_server, name="serverTCP", daemon = True)
+    # Creează un fir de execuție pentru client, rulează funcția start_client
+    client_thread = threading.Thread(target=start_client, name="clientTCP")         
+    
+    server_thread.start()       # Pornește firul de execuție al serverului
+    client_thread.start()       # Pornește firul de execuție al clientului
+
+def stop_server():          #se instantiaza funcţia stop_server
+    global server_thread
+    global client_thread
+    global stopEvent
+    stopEvent.set()
+
+
+# Imparte fisierul CSV combinat in fisiere separate
+def splitCSVs(): 
+    with open('Date_CSV.csv', 'r', newline='') as file:
+        with open('_Temperaturi.csv', 'w', newline='') as temp_file:
+            with open('_Umiditate.csv', 'w', newline='') as umid_file:
+                with open('_Viteza.csv', 'w', newline='') as vit_file:
+                    with open('_Prezenta.csv', 'w', newline='') as prez_file:
+                        #temp-0, umiditate-1, viteza-2, prezenta-3
+                        wr_t = csv.writer(temp_file,delimiter=',',quotechar=' ', quoting=csv.QUOTE_MINIMAL)
+                        wr_u = csv.writer(umid_file,delimiter=',',quotechar=' ', quoting=csv.QUOTE_MINIMAL)
+                        wr_v = csv.writer(vit_file,delimiter=',',quotechar=' ', quoting=csv.QUOTE_MINIMAL)
+                        wr_p = csv.writer(prez_file,delimiter=',',quotechar=' ', quoting=csv.QUOTE_MINIMAL)
+                        rd = csv.reader(file, delimiter=',', quotechar='|')
+                        hd = next(rd)
+                        index = 0 #index pentru numarul citirii
+                        for row in rd:
+                            print(row)
+                            currentTime = datetime.datetime.now().strftime("%H:%M:%S")
+                            wr_t.writerow([currentTime,index,row[1],row[2],row[3],row[4],row[5]])
+                            wr_u.writerow([currentTime,index,row[6],row[7],row[8]])
+                            wr_v.writerow([currentTime,index,row[9],row[10]])
+                            wr_p.writerow([currentTime,index,row[11],row[12]])
+                            index = index + 1
+                        print('done splitting')
+
+# Vizualizare grafice din fisiere CSV
+def visualize_graphs():
+    index = []
+    temp1, temp2, temp3 = [], [], []
+    with open('_Temperaturi.csv', 'r') as file:
+        reader = csv.reader(file)
+        next(reader)
+        for row in reader:
+            print(row)
+            index.append(row[1])
+            temp1.append(float(row[2]))
+            temp2.append(float(row[3]))
+            temp3.append(float(row[4]))
+
+    plt.plot(index, temp1, label='Temp1')
+    plt.plot(index, temp2, label='Temp2')
+    plt.plot(index, temp3, label='Temp3')
+    plt.xticks(fontsize=10, rotation=90)
+    plt.legend()
+    plt.show()
+
+# Creare interfata grafica
+def create_gui():
+    global root
+    root = tk.Tk()
+    root.title("TCP GUI")
+    root.geometry("600x750")
+
+    frame = tk.Frame(root)
+    frame.pack()
+
+    image_path = "interfata/poza_fundal.png"
+    image = Image.open(image_path)
+    image = image.resize((600, 700))
+    photo = ImageTk.PhotoImage(image)
+
+    frame = tk.Frame(root, width=400, height=400)
+    background_label = tk.Label(frame, image=photo)
+    background_label.image = photo
+    background_label.place(x=0, y=0, relwidth=1, relheight=1)
+
+    btn_connect = tk.Button(frame, text="Conectare Serial", command=connect_serial, bg='#FFA07A', fg='black')
+    btn_connect.pack(pady=10)
+
+    btn_graph = tk.Button(frame, text="Afisare Grafic", command=dynamic_graph, bg='#87CEEB', fg='black')
+    btn_graph.pack(pady=10)
+
+    btn_split = tk.Button(frame, text="Impartire CSV", command=splitCSVs, bg='#98FB98', fg='black')
+    btn_split.pack(pady=10)
+
+    btn_visualize = tk.Button(frame, text="Vizualizare Grafice", command=visualize_graphs, bg='#FFD700', fg='black')
+    btn_visualize.pack(pady=10)
+
+    btn_stop_serial = tk.Button(frame, text="Oprire Serial", command=stop_serial, bg='#F08080', fg='black')
+    btn_stop_serial.pack(pady=10)
+
+    start_button = tk.Button(frame, text="Start Server & Client", command=run_server_and_client, bg='white')   
+    start_button.pack(pady=10)      #Așază butonul în cadrul main_frame și adaugă o margine de 20 unități
+
+
+    stop_server_button = tk.Button(frame, text="Opreste server si client", command=stop_server, bg='cyan')     
+    stop_server_button.pack(pady=10)    #Așază butonul în cadrul main_frame și adaugă o margine de 10 unități 
+
+
+    frame.pack(fill='both', expand=True)
+    root.mainloop()
+
+if __name__ == "__main__":
+    create_gui()
